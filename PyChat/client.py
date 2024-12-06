@@ -72,7 +72,7 @@ def main():
         nickname = "Anonymous"
 
     # Send the nickname to the server
-    client_socket.sendall(f"[{nickname}]".encode())
+    client_socket.sendall(f"{nickname}".encode())
 
     # Start threads for receiving and sending messages
     receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
