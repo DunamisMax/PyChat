@@ -50,7 +50,7 @@ def handle_client(client_socket, client_address):
                 # Print message to server console
                 print(f"[{nickname}] - {message}")
                 # Broadcast the message to other clients
-                broadcast(f"[{nickname}] {message}", sender_socket=client_socket)
+                broadcast(f"[{nickname}] - {message}", sender_socket=client_socket)
             else:
                 # No message indicates disconnection
                 remove_client(client_socket)
