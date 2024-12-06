@@ -4,8 +4,9 @@ import threading
 import sys
 
 # Client configuration
-HOST = '0.0.0.0'  # The server's hostname or IP address
-PORT = 42069         # The port used by the server
+HOST = "0.0.0.0"  # The server's hostname or IP address
+PORT = 42069  # The port used by the server
+
 
 def receive_messages(client_socket):
     """
@@ -16,7 +17,7 @@ def receive_messages(client_socket):
             message = client_socket.recv(1024)
             if message:
                 print(f"\n{message.decode().strip()}")
-                print("> ", end='', flush=True)
+                print("> ", end="", flush=True)
             else:
                 # Server closed the connection
                 print("\n[INFO] Connection closed by server.")
@@ -30,6 +31,7 @@ def receive_messages(client_socket):
             client_socket.close()
             break
 
+
 def send_messages(client_socket):
     """
     Reads user input and sends messages to the server.
@@ -37,7 +39,7 @@ def send_messages(client_socket):
     while True:
         try:
             message = input("> ")
-            if message.lower() == 'quit':
+            if message.lower() == "quit":
                 client_socket.close()
                 print("[INFO] Disconnected from server.")
                 break
@@ -47,6 +49,7 @@ def send_messages(client_socket):
             print(f"\n[ERROR] An error occurred: {e}")
             client_socket.close()
             break
+
 
 def main():
     """
@@ -83,6 +86,7 @@ def main():
     # Keep the main thread running, wait for threads to finish
     receive_thread.join()
     send_thread.join()
+
 
 if __name__ == "__main__":
     main()
