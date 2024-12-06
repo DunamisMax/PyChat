@@ -71,8 +71,8 @@ def main():
     if not nickname:
         nickname = "Anonymous"
 
-    # Send the nickname to the server (optional feature)
-    client_socket.sendall(f"[{nickname}] has joined the chat.".encode())
+    # Send the nickname to the server
+    client_socket.sendall(f"[{nickname}]".encode())
 
     # Start threads for receiving and sending messages
     receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
