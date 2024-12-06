@@ -3,10 +3,6 @@ import socket
 import threading
 import sys
 
-# Client configuration
-HOST = "0.0.0.0"  # The server's hostname or IP address
-PORT = 42069  # The port used by the server
-
 
 def receive_messages(client_socket):
     """
@@ -55,21 +51,31 @@ def main():
     """
     Main function to run the client.
     """
+    # Ask the user for the server IP address, port, and nickname
+    host = input("Enter the server IP address: ")
+    port = input("Enter the server port: ")
+
+    try:
+        # Convert the port to an integer
+        port = int(port)
+    except ValueError:
+        print("[ERROR] Port must be an integer.")
+        sys.exit()
+
+    nickname = input("Enter your nickname: ")
+    if not nickname:
+        nickname = "Anonymous"
+
     # Create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Connect the socket to the server
     try:
-        client_socket.connect((HOST, PORT))
-        print(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
+        client_socket.connect((host, port))
+        print(f"[CONNECTED] Connected to server at {host}:{port}")
     except ConnectionRefusedError:
-        print(f"[ERROR] Unable to connect to server at {HOST}:{PORT}")
+        print(f"[ERROR] Unable to connect to server at {host}:{port}")
         sys.exit()
-
-    # Optionally, set a nickname
-    nickname = input("Enter your nickname: ")
-    if not nickname:
-        nickname = "Anonymous"
 
     # Send the nickname to the server
     client_socket.sendall(f"{nickname}".encode())
