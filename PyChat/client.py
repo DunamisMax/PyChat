@@ -16,7 +16,7 @@ def receive_messages(client_socket):
         try:
             message = client_socket.recv(1024)
             if message:
-                print(f"\n{message.decode().strip()}")
+                print(f"\n{message.decode().strip()}\n")
                 print("> ", end="", flush=True)
             else:
                 # Server closed the connection
