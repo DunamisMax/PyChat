@@ -48,7 +48,7 @@ def handle_client(client_socket, client_address):
             if message_data:
                 message = message_data.decode().strip()
                 # Print message to server console
-                print(f"[{nickname}] {message}")
+                print(f"[{nickname}] - {message}")
                 # Broadcast the message to other clients
                 broadcast(f"[{nickname}] {message}", sender_socket=client_socket)
             else:
