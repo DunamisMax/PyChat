@@ -45,13 +45,13 @@ A simple multi-client chat application built with Python's `socket` and `threadi
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/your-repo-name.git
+   git clone https://github.com/DunamisMax/PyChat
    ```
 
 2. **Navigate to the Project Directory**
 
    ```bash
-   cd your-repo-name
+   cd PyChat
    ```
 
 ## Usage
@@ -246,11 +246,3 @@ Contributions are welcome! If you'd like to contribute, please follow these step
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
----
-
-Feel free to modify this `README.md` file to add more details or customize it according to your preferences.
-
-**Note**: Remember to create a `LICENSE` file in your repository if you choose to include a license. The MIT License is commonly used, but you can select any license that suits your project's needs.
-
-Let me know if you need any further assistance!
