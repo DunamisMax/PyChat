@@ -4,9 +4,31 @@ import socket
 import threading
 import argparse
 import sys
+import logging
+import time
 
-# Dictionary to keep track of connected clients {socket: nickname}
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("chat_server.log"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+
+# Dictionary to keep track of connected clients {socket: (nickname, address)}
 clients = {}
+
+# Rate limiting configurations
+RATE_LIMIT = 5  # max messages
+RATE_LIMIT_PERIOD = 10  # time window in seconds
+
+# Maximum message size in bytes
+MAX_MESSAGE_SIZE = 1024  # 1KB
+
+# Maximum concurrent connections
+MAX_CONNECTIONS = 100
 
 
 def broadcast(message, sender_socket=None):
@@ -18,7 +40,10 @@ def broadcast(message, sender_socket=None):
         if client_socket != sender_socket:
             try:
                 client_socket.sendall(message.encode("utf-8"))
-            except:
+            except Exception as e:
+                logging.error(
+                    f"Error sending message to {clients[client_socket][0]}: {e}"
+                )
                 # If sending fails, remove the client
                 remove_client(client_socket)
 
@@ -27,7 +52,10 @@ def handle_client(client_socket, client_address):
     """
     Handles communication with a connected client.
     """
-    print(f"[NEW CONNECTION] {client_address} connected.")
+    logging.info(f"[NEW CONNECTION] {client_address} connected.")
+
+    # Rate limiting data: {timestamp: message count}
+    message_times = []
 
     try:
         # Receive the nickname from the client
@@ -37,7 +65,7 @@ def handle_client(client_socket, client_address):
             nickname = "Anonymous"
 
         # Check if nickname is already taken
-        nicknames = clients.values()
+        nicknames = [info[0] for info in clients.values()]
         if nickname in nicknames:
             client_socket.sendall(
                 "[SERVER] Nickname already taken. Please reconnect with a different nickname.".encode(
@@ -48,8 +76,8 @@ def handle_client(client_socket, client_address):
             return
 
         # Add the client to the clients dictionary
-        clients[client_socket] = nickname
-        print(f"[NICKNAME] {client_address} is now known as {nickname}")
+        clients[client_socket] = (nickname, client_address)
+        logging.info(f"[NICKNAME] {client_address} is now known as {nickname}")
 
         # Notify all clients that a new user has joined
         broadcast(f"[{nickname}] has joined the chat.")
@@ -59,18 +87,49 @@ def handle_client(client_socket, client_address):
 
         while True:
             # Receive message from client
-            message_data = client_socket.recv(1024)
+            message_data = client_socket.recv(MAX_MESSAGE_SIZE)
             if message_data:
+                # Limit message size
+                if len(message_data) > MAX_MESSAGE_SIZE:
+                    client_socket.sendall(
+                        "[SERVER] Message too long. Please limit your messages to 1KB.".encode(
+                            "utf-8"
+                        )
+                    )
+                    continue
+
                 message = message_data.decode("utf-8").strip()
-                if message.lower() == "quit":
+
+                # Sanitize message (for this example, we'll just strip control characters)
+                sanitized_message = "".join(ch for ch in message if ch.isprintable())
+
+                # Rate limiting
+                current_time = time.time()
+                # Remove timestamps older than RATE_LIMIT_PERIOD
+                message_times = [
+                    t for t in message_times if current_time - t < RATE_LIMIT_PERIOD
+                ]
+                if len(message_times) >= RATE_LIMIT:
+                    client_socket.sendall(
+                        "[SERVER] Message rate limit exceeded. Please slow down.".encode(
+                            "utf-8"
+                        )
+                    )
+                    continue
+                else:
+                    message_times.append(current_time)
+
+                if sanitized_message.lower() == "quit":
                     # Client initiated disconnect
                     remove_client(client_socket)
                     break
                 else:
-                    # Print message to server console
-                    print(f"[{nickname}] {message}")
+                    # Log the message
+                    logging.info(f"[{nickname}] {sanitized_message}")
                     # Broadcast the message to other clients
-                    broadcast(f"[{nickname}] {message}", sender_socket=client_socket)
+                    broadcast(
+                        f"[{nickname}] {sanitized_message}", sender_socket=client_socket
+                    )
             else:
                 # No message indicates disconnection
                 remove_client(client_socket)
@@ -79,7 +138,7 @@ def handle_client(client_socket, client_address):
         # Handle abrupt disconnection
         remove_client(client_socket)
     except Exception as e:
-        print(f"[ERROR] An error occurred with {client_address}: {e}")
+        logging.error(f"An error occurred with {client_address}: {e}")
         remove_client(client_socket)
 
 
@@ -87,11 +146,11 @@ def remove_client(client_socket):
     """
     Removes a client from the clients dictionary and closes the connection.
     """
-    nickname = clients.get(client_socket, "Unknown")
+    nickname = clients.get(client_socket, ("Unknown", None))[0]
     if client_socket in clients:
         del clients[client_socket]
         client_socket.close()
-        print(f"[DISCONNECTED] {nickname} has disconnected.")
+        logging.info(f"[DISCONNECTED] {nickname} has disconnected.")
         # Notify all clients that the user has left
         broadcast(f"[{nickname}] has left the chat.")
 
@@ -110,17 +169,28 @@ def start_server(host, port):
     try:
         server_socket.bind((host, port))
     except OSError as e:
-        print(f"[ERROR] Could not bind to {host}:{port}. Error: {e}")
+        logging.error(f"Could not bind to {host}:{port}. Error: {e}")
         sys.exit()
 
     # Listen for incoming connections
     server_socket.listen()
-    print(f"[LISTENING] Server is listening on {host}:{port}")
+    logging.info(f"[LISTENING] Server is listening on {host}:{port}")
 
     try:
         while True:
             # Accept a new client connection
             client_socket, client_address = server_socket.accept()
+
+            # Check for maximum connections
+            if len(clients) >= MAX_CONNECTIONS:
+                client_socket.sendall(
+                    "[SERVER] Server is full. Try again later.".encode("utf-8")
+                )
+                client_socket.close()
+                logging.warning(
+                    f"[CONNECTION REJECTED] {client_address} - Server is full."
+                )
+                continue
 
             # Start a new thread to handle the client
             client_thread = threading.Thread(
@@ -129,9 +199,9 @@ def start_server(host, port):
             client_thread.daemon = True  # Allows thread to exit when main thread exits
             client_thread.start()
 
-            print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}")
+            logging.info(f"[ACTIVE CONNECTIONS] {len(clients)}/{MAX_CONNECTIONS}")
     except KeyboardInterrupt:
-        print("\n[SHUTDOWN] Server is shutting down.")
+        logging.info("[SHUTDOWN] Server is shutting down.")
     finally:
         # Close all client sockets
         for client_socket in list(clients.keys()):
@@ -140,7 +210,7 @@ def start_server(host, port):
 
 
 if __name__ == "__main__":
-    print("[STARTING] Server is starting...")
+    logging.info("[STARTING] Server is starting...")
 
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Chat server")
