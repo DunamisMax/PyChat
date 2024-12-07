@@ -3,70 +3,39 @@
 import socket
 import threading
 import sys
+import time  # Ensure time is imported
 
 MAX_MESSAGE_SIZE = 1024  # 1KB
 
 
-def receive_messages(client_socket):
+def send_quit_message(client_socket):
     """
-    Listens for messages from the server and prints them.
+    Sends the 'quit' message to the server.
     """
     try:
-        while True:
-            try:
-                message = client_socket.recv(MAX_MESSAGE_SIZE)
-                if message:
-                    decoded_message = message.decode("utf-8").strip()
-                    if decoded_message.startswith("[SERVER]"):
-                        # Display server messages distinctly
-                        print(
-                            f"\r\033[93m{decoded_message}\033[0m\n> ",
-                            end="",
-                            flush=True,
-                        )
-                    else:
-                        # Print regular messages
-                        print(f"\r{decoded_message}\n> ", end="", flush=True)
-                else:
-                    # Server closed the connection gracefully
-                    print("\n[INFO] Connection closed by server.")
-                    break
-            except (ConnectionResetError, ConnectionAbortedError):
-                # Handle abrupt disconnection from the server
-                print("\n[ERROR] Connection with the server was lost.")
-                break
-            except UnicodeDecodeError:
-                # Handle decoding errors
-                print("\n[ERROR] Received a message that could not be decoded.")
-                continue
-            except Exception as e:
-                print(f"\n[ERROR] An error occurred while receiving messages: {e}")
-                break
+        client_socket.sendall("quit".encode("utf-8"))
     except Exception as e:
-        print(f"\n[ERROR] An unexpected error occurred: {e}")
-    finally:
-        # Close the socket if it's still open
-        if client_socket:
-            client_socket.close()
-        print("[INFO] Disconnected from server.")
+        print(f"[ERROR] Failed to send 'quit' message: {e}")
 
 
-def send_messages(client_socket):
+def send_messages(client_socket, shutdown_event):
     """
     Reads user input and sends messages to the server.
     """
     try:
-        while True:
+        while not shutdown_event.is_set():
             try:
                 message = input("> ")
             except EOFError:
                 # Handle EOF (e.g., Ctrl+D/Ctrl+Z)
                 print("\n[INFO] EOF received. Disconnecting from server.")
                 send_quit_message(client_socket)
+                shutdown_event.set()
                 break
 
             if message.lower() == "quit":
                 send_quit_message(client_socket)
+                shutdown_event.set()
                 break
             elif message.lower() == "/help":
                 print(
@@ -88,28 +57,66 @@ def send_messages(client_socket):
                     client_socket.sendall(encoded_message)
                 except (BrokenPipeError, ConnectionResetError):
                     print("\n[ERROR] Connection lost. Unable to send message.")
+                    shutdown_event.set()
                     break
                 except Exception as e:
                     print(f"\n[ERROR] An error occurred while sending messages: {e}")
+                    shutdown_event.set()
                     break
     except KeyboardInterrupt:
         print("\n[INFO] Keyboard interrupt received. Disconnecting from server.")
         send_quit_message(client_socket)
+        shutdown_event.set()
     except Exception as e:
-        print(f"\n[ERROR] An unexpected error occurred: {e}")
+        print(f"\n[ERROR] An unexpected error occurred while sending messages: {e}")
+        shutdown_event.set()
     finally:
-        client_socket.close()
-        print("[INFO] Disconnected from server.")
+        print("[INFO] Sending thread exiting.")
 
 
-def send_quit_message(client_socket):
+def receive_messages(client_socket, shutdown_event):
     """
-    Sends the 'quit' message to the server and closes the socket.
+    Listens for messages from the server and prints them.
     """
     try:
-        client_socket.sendall("quit".encode("utf-8"))
+        while not shutdown_event.is_set():
+            try:
+                message = client_socket.recv(MAX_MESSAGE_SIZE)
+                if message:
+                    decoded_message = message.decode("utf-8").strip()
+                    if decoded_message.startswith("[SERVER]"):
+                        # Display server messages distinctly
+                        print(
+                            f"\r\033[93m{decoded_message}\033[0m\n> ",
+                            end="",
+                            flush=True,
+                        )
+                    else:
+                        # Print regular messages
+                        print(f"\r{decoded_message}\n> ", end="", flush=True)
+                else:
+                    # Server closed the connection gracefully
+                    print("\n[INFO] Connection closed by server.")
+                    shutdown_event.set()
+                    break
+            except (ConnectionResetError, ConnectionAbortedError):
+                # Handle abrupt disconnection from the server
+                print("\n[ERROR] Connection with the server was lost.")
+                shutdown_event.set()
+                break
+            except UnicodeDecodeError:
+                # Handle decoding errors
+                print("\n[ERROR] Received a message that could not be decoded.")
+                continue
+            except Exception as e:
+                print(f"\n[ERROR] An error occurred while receiving messages: {e}")
+                shutdown_event.set()
+                break
     except Exception as e:
-        print(f"[ERROR] Failed to send 'quit' message: {e}")
+        print(f"\n[ERROR] An unexpected error occurred while receiving messages: {e}")
+        shutdown_event.set()
+    finally:
+        print("[INFO] Receiving thread exiting.")
 
 
 def main():
@@ -127,43 +134,69 @@ def main():
         print("[ERROR] Port must be an integer.")
         sys.exit()
 
+    # Initialize the shutdown event
+    shutdown_event = threading.Event()
+
     # Create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # Connect the socket to the server
     try:
-        client_socket.connect((host, port))
-        print(f"[CONNECTED] Connected to server at {host}:{port}")
-    except ConnectionRefusedError:
-        print(f"[ERROR] Unable to connect to server at {host}:{port}")
-        sys.exit()
-    except socket.gaierror:
-        print(f"[ERROR] Invalid server IP address: {host}")
-        sys.exit()
+        # Connect the socket to the server
+        try:
+            client_socket.connect((host, port))
+            print(f"[CONNECTED] Connected to server at {host}:{port}")
+        except (ConnectionRefusedError, socket.timeout):
+            print(f"[ERROR] Unable to connect to server at {host}:{port}")
+            client_socket.close()
+            sys.exit()
+        except socket.gaierror:
+            print(f"[ERROR] Invalid server IP address: {host}")
+            client_socket.close()
+            sys.exit()
+        except Exception as e:
+            print(f"[ERROR] An unexpected error occurred while connecting: {e}")
+            client_socket.close()
+            sys.exit()
+
+        # Send the nickname to the server
+        try:
+            client_socket.sendall(nickname.encode("utf-8"))
+        except Exception as e:
+            print(f"[ERROR] Failed to send nickname: {e}")
+            client_socket.close()
+            sys.exit()
+
+        # Start threads for receiving and sending messages
+        receive_thread = threading.Thread(
+            target=receive_messages, args=(client_socket, shutdown_event)
+        )
+        receive_thread.daemon = True  # Allows thread to exit when main thread exits
+        receive_thread.start()
+
+        send_thread = threading.Thread(
+            target=send_messages, args=(client_socket, shutdown_event)
+        )
+        send_thread.daemon = True
+        send_thread.start()
+
+        # Wait for the threads to finish or a KeyboardInterrupt
+        try:
+            while receive_thread.is_alive() and send_thread.is_alive():
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\n[INFO] Keyboard interrupt received. Exiting...")
+            shutdown_event.set()
+        finally:
+            # Ensure threads have finished
+            receive_thread.join()
+            send_thread.join()
+            # Close the socket
+            client_socket.close()
+            print("[INFO] Client shutdown complete.")
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred: {e}")
-        sys.exit()
-
-    # Send the nickname to the server
-    try:
-        client_socket.sendall(nickname.encode("utf-8"))
-    except Exception as e:
-        print(f"[ERROR] Failed to send nickname: {e}")
         client_socket.close()
         sys.exit()
-
-    # Start threads for receiving and sending messages
-    receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
-    receive_thread.daemon = True  # Allows thread to exit when main thread exits
-    receive_thread.start()
-
-    send_thread = threading.Thread(target=send_messages, args=(client_socket,))
-    send_thread.daemon = True
-    send_thread.start()
-
-    # Keep the main thread running, wait for threads to finish
-    receive_thread.join()
-    send_thread.join()
 
 
 if __name__ == "__main__":

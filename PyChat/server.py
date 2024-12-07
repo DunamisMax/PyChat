@@ -54,12 +54,12 @@ def handle_client(client_socket, client_address):
     """
     logging.info(f"[NEW CONNECTION] {client_address} connected.")
 
-    # Rate limiting data: {timestamp: message count}
+    # Rate limiting data: list of message timestamps
     message_times = []
 
     try:
         # Receive the nickname from the client
-        nickname_data = client_socket.recv(1024)
+        nickname_data = client_socket.recv(MAX_MESSAGE_SIZE)
         nickname = nickname_data.decode("utf-8").strip()
         if not nickname:
             nickname = "Anonymous"
@@ -82,56 +82,73 @@ def handle_client(client_socket, client_address):
         # Notify all clients that a new user has joined
         broadcast(f"[{nickname}] has joined the chat.")
         client_socket.sendall(
-            "[SERVER] You have joined the chat. Type 'quit' to exit.".encode("utf-8")
+            "[SERVER] You have joined the chat. Type 'quit' to exit or '/help' for commands.".encode(
+                "utf-8"
+            )
         )
 
         while True:
             # Receive message from client
-            message_data = client_socket.recv(MAX_MESSAGE_SIZE)
-            if message_data:
-                # Limit message size
-                if len(message_data) > MAX_MESSAGE_SIZE:
-                    client_socket.sendall(
-                        "[SERVER] Message too long. Please limit your messages to 1KB.".encode(
-                            "utf-8"
-                        )
+            try:
+                message_data = client_socket.recv(MAX_MESSAGE_SIZE)
+                if message_data:
+                    # Handle message size limit (already enforced by recv size)
+                    message = message_data.decode("utf-8").strip()
+
+                    # Sanitize message (strip control characters)
+                    sanitized_message = "".join(
+                        ch for ch in message if ch.isprintable()
                     )
-                    continue
 
-                message = message_data.decode("utf-8").strip()
-
-                # Sanitize message (for this example, we'll just strip control characters)
-                sanitized_message = "".join(ch for ch in message if ch.isprintable())
-
-                # Rate limiting
-                current_time = time.time()
-                # Remove timestamps older than RATE_LIMIT_PERIOD
-                message_times = [
-                    t for t in message_times if current_time - t < RATE_LIMIT_PERIOD
-                ]
-                if len(message_times) >= RATE_LIMIT:
-                    client_socket.sendall(
-                        "[SERVER] Message rate limit exceeded. Please slow down.".encode(
-                            "utf-8"
+                    # Rate limiting
+                    current_time = time.time()
+                    # Remove timestamps older than RATE_LIMIT_PERIOD
+                    message_times = [
+                        t for t in message_times if current_time - t < RATE_LIMIT_PERIOD
+                    ]
+                    if len(message_times) >= RATE_LIMIT:
+                        client_socket.sendall(
+                            "[SERVER] Message rate limit exceeded. Please slow down.".encode(
+                                "utf-8"
+                            )
                         )
-                    )
-                    continue
+                        continue
+                    else:
+                        message_times.append(current_time)
+
+                    if sanitized_message.lower() == "quit":
+                        # Client initiated disconnect
+                        remove_client(client_socket)
+                        break
+                    elif sanitized_message.lower() == "/help":
+                        # Send help message to the client
+                        client_socket.sendall(
+                            "[SERVER] Available Commands:\n - quit: Disconnect from the chat\n - /help: Show this help message\n".encode(
+                                "utf-8"
+                            )
+                        )
+                    else:
+                        # Log the message
+                        logging.info(f"[{nickname}] {sanitized_message}")
+                        # Broadcast the message to other clients
+                        broadcast(
+                            f"[{nickname}] {sanitized_message}",
+                            sender_socket=client_socket,
+                        )
                 else:
-                    message_times.append(current_time)
-
-                if sanitized_message.lower() == "quit":
-                    # Client initiated disconnect
+                    # No message indicates disconnection
                     remove_client(client_socket)
                     break
-                else:
-                    # Log the message
-                    logging.info(f"[{nickname}] {sanitized_message}")
-                    # Broadcast the message to other clients
-                    broadcast(
-                        f"[{nickname}] {sanitized_message}", sender_socket=client_socket
-                    )
-            else:
-                # No message indicates disconnection
+            except UnicodeDecodeError:
+                # Handle decoding errors
+                client_socket.sendall(
+                    "[SERVER] Received an invalid message.".encode("utf-8")
+                )
+                continue
+            except Exception as e:
+                logging.error(
+                    f"An error occurred while handling messages from {client_address}: {e}"
+                )
                 remove_client(client_socket)
                 break
     except ConnectionResetError:
