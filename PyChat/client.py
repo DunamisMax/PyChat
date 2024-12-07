@@ -3,7 +3,6 @@
 import socket
 import threading
 import sys
-import argparse
 
 
 def receive_messages(client_socket):
@@ -38,6 +37,7 @@ def send_messages(client_socket):
         try:
             message = input("> ")
             if message.lower() == "quit":
+                client_socket.sendall(message.encode("utf-8"))
                 client_socket.close()
                 print("[INFO] Disconnected from server.")
                 break
@@ -53,22 +53,18 @@ def main():
     """
     Main function to run the client.
     """
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Chat client")
-    parser.add_argument("--host", default="localhost", help="Server IP address")
-    parser.add_argument("--port", type=int, default=42069, help="Server port")
-    parser.add_argument("--nickname", help="Your nickname")
-    args = parser.parse_args()
+    # Ask the user for the server IP address, port, and nickname
+    host = input("Enter the server IP address: ")
+    port_input = input("Enter the server port: ")
+    nickname = input("Enter your nickname: ")
+    if not nickname:
+        nickname = "Anonymous"
 
-    host = args.host
-    port = args.port
-
-    if args.nickname:
-        nickname = args.nickname
-    else:
-        nickname = input("Enter your nickname: ")
-        if not nickname:
-            nickname = "Anonymous"
+    try:
+        port = int(port_input)
+    except ValueError:
+        print("[ERROR] Port must be an integer.")
+        sys.exit()
 
     # Create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,6 +75,9 @@ def main():
         print(f"[CONNECTED] Connected to server at {host}:{port}")
     except ConnectionRefusedError:
         print(f"[ERROR] Unable to connect to server at {host}:{port}")
+        sys.exit()
+    except socket.gaierror:
+        print(f"[ERROR] Invalid server IP address: {host}")
         sys.exit()
 
     # Send the nickname to the server
