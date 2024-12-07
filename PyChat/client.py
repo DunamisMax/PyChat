@@ -54,9 +54,9 @@ def main():
     Main function to run the client.
     """
     # Ask the user for the server IP address, port, and nickname
-    host = input("Enter the server IP address: ")
-    port_input = input("Enter the server port: ")
-    nickname = input("Enter your nickname: ")
+    host = input("Enter the server IP address: ") or "0.0.0.0"
+    port_input = input("Enter the server port: ") or "42069"
+    nickname = input("Enter your nickname: ") or "Anonymous"
     if not nickname:
         nickname = "Anonymous"
 
