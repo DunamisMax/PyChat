@@ -37,13 +37,18 @@ def send_messages(client_socket):
     """
     Reads user input and sends messages to the server.
     """
-    while True:
-        try:
-            message = input("> ")
+    try:
+        while True:
+            try:
+                message = input("> ")
+            except EOFError:
+                # Handle EOF (e.g., Ctrl+D/Ctrl+Z)
+                print("\n[INFO] EOF received. Disconnecting from server.")
+                send_quit_message(client_socket)
+                break
+
             if message.lower() == "quit":
-                client_socket.sendall(message.encode("utf-8"))
-                client_socket.close()
-                print("[INFO] Disconnected from server.")
+                send_quit_message(client_socket)
                 break
             elif message.lower() == "/help":
                 print(
@@ -61,16 +66,32 @@ def send_messages(client_socket):
                     )
                     continue
 
-                client_socket.sendall(encoded_message)
-        except KeyboardInterrupt:
-            client_socket.sendall("quit".encode("utf-8"))
-            client_socket.close()
-            print("\n[INFO] Disconnected from server.")
-            break
-        except Exception as e:
-            print(f"\n[ERROR] An error occurred while sending messages: {e}")
-            client_socket.close()
-            break
+                try:
+                    client_socket.sendall(encoded_message)
+                except (BrokenPipeError, ConnectionResetError):
+                    print("\n[ERROR] Connection lost. Unable to send message.")
+                    break
+                except Exception as e:
+                    print(f"\n[ERROR] An error occurred while sending messages: {e}")
+                    break
+    except KeyboardInterrupt:
+        print("\n[INFO] Keyboard interrupt received. Disconnecting from server.")
+        send_quit_message(client_socket)
+    except Exception as e:
+        print(f"\n[ERROR] An unexpected error occurred: {e}")
+    finally:
+        client_socket.close()
+        print("[INFO] Disconnected from server.")
+
+
+def send_quit_message(client_socket):
+    """
+    Sends the 'quit' message to the server and closes the socket.
+    """
+    try:
+        client_socket.sendall("quit".encode("utf-8"))
+    except Exception as e:
+        print(f"[ERROR] Failed to send 'quit' message: {e}")
 
 
 def main():
