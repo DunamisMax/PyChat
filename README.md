@@ -1,23 +1,26 @@
-```markdown
 # Python Chat Application
 
 A simple multi-client chat application built with Python's `socket` and `threading` modules. This project consists of a server and client that allow multiple users to communicate in real-time over a network.
 
 ## Table of Contents
 
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Running the Server](#running-the-server)
-  - [Running the Client](#running-the-client)
-- [Commands](#commands)
-- [Configuration](#configuration)
-- [Logging](#logging)
-- [Security Measures](#security-measures)
-- [Known Issues](#known-issues)
-- [Contributing](#contributing)
-- [License](#license)
+- [Python Chat Application](#python-chat-application)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Running the Server](#running-the-server)
+    - [Running the Client](#running-the-client)
+  - [Commands](#commands)
+  - [Configuration](#configuration)
+    - [Server Configuration](#server-configuration)
+    - [Client Configuration](#client-configuration)
+  - [Logging](#logging)
+  - [Security Measures](#security-measures)
+  - [Known Issues](#known-issues)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Features
 
