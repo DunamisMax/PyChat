@@ -11,26 +11,44 @@ def receive_messages(client_socket):
     """
     Listens for messages from the server and prints them.
     """
-    while True:
-        try:
-            message = client_socket.recv(MAX_MESSAGE_SIZE)
-            if message:
-                decoded_message = message.decode("utf-8").strip()
-                if decoded_message.startswith("[SERVER]"):
-                    # Display server messages distinctly
-                    print(f"\r\033[93m{decoded_message}\033[0m\n> ", end="", flush=True)
+    try:
+        while True:
+            try:
+                message = client_socket.recv(MAX_MESSAGE_SIZE)
+                if message:
+                    decoded_message = message.decode("utf-8").strip()
+                    if decoded_message.startswith("[SERVER]"):
+                        # Display server messages distinctly
+                        print(
+                            f"\r\033[93m{decoded_message}\033[0m\n> ",
+                            end="",
+                            flush=True,
+                        )
+                    else:
+                        # Print regular messages
+                        print(f"\r{decoded_message}\n> ", end="", flush=True)
                 else:
-                    # Print regular messages
-                    print(f"\r{decoded_message}\n> ", end="", flush=True)
-            else:
-                # Server closed the connection
-                print("\n[INFO] Connection closed by server.")
-                client_socket.close()
+                    # Server closed the connection gracefully
+                    print("\n[INFO] Connection closed by server.")
+                    break
+            except (ConnectionResetError, ConnectionAbortedError):
+                # Handle abrupt disconnection from the server
+                print("\n[ERROR] Connection with the server was lost.")
                 break
-        except Exception as e:
-            print(f"\n[ERROR] An error occurred while receiving messages: {e}")
+            except UnicodeDecodeError:
+                # Handle decoding errors
+                print("\n[ERROR] Received a message that could not be decoded.")
+                continue
+            except Exception as e:
+                print(f"\n[ERROR] An error occurred while receiving messages: {e}")
+                break
+    except Exception as e:
+        print(f"\n[ERROR] An unexpected error occurred: {e}")
+    finally:
+        # Close the socket if it's still open
+        if client_socket:
             client_socket.close()
-            break
+        print("[INFO] Disconnected from server.")
 
 
 def send_messages(client_socket):
