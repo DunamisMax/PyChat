@@ -1,7 +1,9 @@
 # client.py
+
 import socket
 import threading
 import sys
+import argparse
 
 
 def receive_messages(client_socket):
@@ -12,8 +14,8 @@ def receive_messages(client_socket):
         try:
             message = client_socket.recv(1024)
             if message:
-                print(f"\n{message.decode().strip()}\n")
-                print("> ", end="", flush=True)
+                # Print the incoming message and re-display the prompt
+                print(f"\r{message.decode('utf-8').strip()}\n> ", end="", flush=True)
             else:
                 # Server closed the connection
                 print("\n[INFO] Connection closed by server.")
@@ -40,7 +42,7 @@ def send_messages(client_socket):
                 print("[INFO] Disconnected from server.")
                 break
             else:
-                client_socket.sendall(message.encode())
+                client_socket.sendall(message.encode("utf-8"))
         except Exception as e:
             print(f"\n[ERROR] An error occurred: {e}")
             client_socket.close()
@@ -51,20 +53,22 @@ def main():
     """
     Main function to run the client.
     """
-    # Ask the user for the server IP address, port, and nickname
-    host = input("Enter the server IP address: ")
-    port = input("Enter the server port: ")
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Chat client")
+    parser.add_argument("--host", default="localhost", help="Server IP address")
+    parser.add_argument("--port", type=int, default=42069, help="Server port")
+    parser.add_argument("--nickname", help="Your nickname")
+    args = parser.parse_args()
 
-    try:
-        # Convert the port to an integer
-        port = int(port)
-    except ValueError:
-        print("[ERROR] Port must be an integer.")
-        sys.exit()
+    host = args.host
+    port = args.port
 
-    nickname = input("Enter your nickname: ")
-    if not nickname:
-        nickname = "Anonymous"
+    if args.nickname:
+        nickname = args.nickname
+    else:
+        nickname = input("Enter your nickname: ")
+        if not nickname:
+            nickname = "Anonymous"
 
     # Create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,7 +82,7 @@ def main():
         sys.exit()
 
     # Send the nickname to the server
-    client_socket.sendall(f"{nickname}".encode())
+    client_socket.sendall(f"{nickname}".encode("utf-8"))
 
     # Start threads for receiving and sending messages
     receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
