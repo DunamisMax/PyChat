@@ -20,7 +20,6 @@ logging.basicConfig(
 available_rooms = ["General", "Python", "Linux & Open Source", "Off-Topic", "Help"]
 rooms = {room: {} for room in available_rooms}
 
-
 # Global in-memory state
 # We still keep track of all usernames, but now users belong to specific rooms.
 usernames = set()
@@ -103,9 +102,6 @@ def disconnect_user(username: str) -> None:
         with rooms_lock:
             room_clients = rooms.get(user_room, {})
             conn = room_clients.pop(username, None)
-    else:
-        # If for some reason user_room wasn't recorded, just ignore.
-        pass
 
     with usernames_lock:
         usernames.discard(username)
@@ -143,6 +139,17 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
         requested_username = data.decode().strip()
         username = assign_username(requested_username)
 
+        # Notify client of assigned username
+        conn.sendall(f"Your username is: {username}\n".encode())
+
+        # Send the list of available rooms with numbering
+        room_list = "Available rooms:\n"
+        for i, r in enumerate(available_rooms, start=1):
+            room_list += f"{i}. {r}\n"
+        room_list += "Enter the number of the room you want to join:\n"
+        conn.sendall(room_list.encode())
+
+        # Receive the chosen room index from the client
         chosen_room_data = conn.recv(1024)
         if not chosen_room_data:
             logging.info(f"{username} did not choose a room and disconnected.")
@@ -153,7 +160,7 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
         try:
             chosen_index = int(chosen_str) - 1
             if chosen_index < 0 or chosen_index >= len(available_rooms):
-                # Invalid index defaults to "General" or any room you choose
+                # Invalid index defaults to "General"
                 chosen_room = "General"
                 conn.sendall(b"Invalid choice, defaulting to 'General'.\n")
             else:

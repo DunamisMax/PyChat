@@ -27,7 +27,7 @@ def receive_messages(conn: socket.socket, stop_event: threading.Event) -> None:
                 break
 
             message = data.decode().rstrip("\n")
-            # Print the received message on a new line
+            # Print the received message on a new line, then reprint prompt
             sys.stdout.write(f"\n{message}\nYou> ")
             sys.stdout.flush()
 
@@ -83,13 +83,14 @@ def main():
     assigned_username = assigned_line.replace("Your username is:", "").strip()
 
     # After receiving the assigned username, the client receives the room list:
-    room_list_data = conn.recv(1024).decode()
-    sys.stdout.write(room_list_data)
-    sys.stdout.flush()
+    try:
+        room_list_data = conn.recv(1024).decode()
+    except Exception as e:
+        logging.error(f"Failed to receive room list from server: {e}")
+        sys.exit(1)
 
     # Print the available rooms and the prompt
-    # The server should have sent something like:
-    # "Available rooms:\n- Linux\n- Apple\n- Tech\n- News\nEnter the name of the room you want to join:\n"
+    # The server sends a numbered list of rooms and asks the user to enter a number
     sys.stdout.write(room_list_data)
     sys.stdout.flush()
 
@@ -101,11 +102,9 @@ def main():
         conn.sendall((chosen_room_num + "\n").encode())
     except Exception as e:
         logging.error(f"Failed to send chosen room number to server: {e}")
-    sys.exit(1)
+        # Do not exit here, just continue. The server might assign default room.
 
     # The server may respond with an invalid room message
-    # If the room is invalid, the server sends "Invalid room chosen..." line.
-    # Let's do a non-blocking check:
     conn.settimeout(0.5)
     invalid_msg = ""
     try:
@@ -116,11 +115,11 @@ def main():
     finally:
         conn.settimeout(None)
 
-    if invalid_msg.startswith("Invalid room chosen"):
+    if invalid_msg.startswith("Invalid choice"):
         # Print the server's invalid choice message
         print(invalid_msg)
 
-    # Now we have joined a room (either the chosen one or the fallback "Tech")
+    # Now we have joined a room (either the chosen one or the fallback "General")
 
     # Print instructions after joining the room
     print("\n" + "=" * 50)
