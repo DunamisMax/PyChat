@@ -82,12 +82,10 @@ def main():
 
     assigned_username = assigned_line.replace("Your username is:", "").strip()
 
-    # Receive and display the list of available rooms
-    try:
-        room_list_data = conn.recv(1024).decode()
-    except Exception as e:
-        logging.error(f"Failed to receive room list from server: {e}")
-        sys.exit(1)
+    # After receiving the assigned username, the client receives the room list:
+    room_list_data = conn.recv(1024).decode()
+    sys.stdout.write(room_list_data)
+    sys.stdout.flush()
 
     # Print the available rooms and the prompt
     # The server should have sent something like:
@@ -95,15 +93,15 @@ def main():
     sys.stdout.write(room_list_data)
     sys.stdout.flush()
 
-    # Prompt the user to choose a room
-    chosen_room = input("").strip()
+    # Prompt user to choose a room by number
+    chosen_room_num = input("").strip()
 
-    # Send the chosen room to the server
+    # Send the chosen number back to the server
     try:
-        conn.sendall((chosen_room + "\n").encode())
+        conn.sendall((chosen_room_num + "\n").encode())
     except Exception as e:
-        logging.error(f"Failed to send chosen room to server: {e}")
-        sys.exit(1)
+        logging.error(f"Failed to send chosen room number to server: {e}")
+    sys.exit(1)
 
     # The server may respond with an invalid room message
     # If the room is invalid, the server sends "Invalid room chosen..." line.

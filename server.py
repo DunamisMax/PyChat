@@ -17,7 +17,9 @@ logging.basicConfig(
 )
 
 # Available chat rooms (hard-coded)
-rooms = {"Linux": {}, "Apple": {}, "Tech": {}, "News": {}}
+available_rooms = ["General", "Python", "Linux & Open Source", "Off-Topic", "Help"]
+rooms = {room: {} for room in available_rooms}
+
 
 # Global in-memory state
 # We still keep track of all usernames, but now users belong to specific rooms.
@@ -141,28 +143,25 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
         requested_username = data.decode().strip()
         username = assign_username(requested_username)
 
-        # Step 2: Notify client of assigned username
-        conn.sendall(f"Your username is: {username}\n".encode())
-
-        # Send the list of available rooms
-        room_list = "Available rooms:\n"
-        for r in rooms.keys():
-            room_list += f"- {r}\n"
-        room_list += "Enter the name of the room you want to join:\n"
-        conn.sendall(room_list.encode())
-
-        # Receive the chosen room
         chosen_room_data = conn.recv(1024)
         if not chosen_room_data:
             logging.info(f"{username} did not choose a room and disconnected.")
             conn.close()
             return
 
-        chosen_room = chosen_room_data.decode().strip()
-        if chosen_room not in rooms:
-            # If invalid room, default to "Tech" for this session
-            chosen_room = "Tech"
-            conn.sendall(b"Invalid room chosen, defaulting to 'Tech'.\n")
+        chosen_str = chosen_room_data.decode().strip()
+        try:
+            chosen_index = int(chosen_str) - 1
+            if chosen_index < 0 or chosen_index >= len(available_rooms):
+                # Invalid index defaults to "General" or any room you choose
+                chosen_room = "General"
+                conn.sendall(b"Invalid choice, defaulting to 'General'.\n")
+            else:
+                chosen_room = available_rooms[chosen_index]
+        except ValueError:
+            # If user didn't enter a number, default to "General"
+            chosen_room = "General"
+            conn.sendall(b"Invalid choice, defaulting to 'General'.\n")
 
         # Step 4: Add the client to the chosen room
         with rooms_lock:
