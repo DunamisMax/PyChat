@@ -52,7 +52,7 @@ def main():
     desired_username = input("Enter your desired username: ").strip() or "User"
 
     # Server port must match the server configuration in server.py
-    server_port = 54207
+    server_port = 443
 
     # Attempt to connect to the server
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
