@@ -1,4 +1,3 @@
-```markdown
 # PyChat
 
 A simple, terminal-based chat application featuring a TCP chat server and a FastAPI endpoint for monitoring connected users. This project allows multiple users to connect to a central server and exchange messages in real-time, and also provides a convenient HTTP endpoint for listing currently active participants.
@@ -93,4 +92,3 @@ This project is provided as-is under an unlicensed, free-to-use model. Check the
 ---
 
 Created and maintained by [dunamismax](https://github.com/dunamismax), with the assistance of GPT in o1-pro mode.
-```
