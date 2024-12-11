@@ -39,9 +39,9 @@ def receive_messages(conn: socket.socket, stop_event: threading.Event) -> None:
 
 def main():
     """
-    The main entry point for the PyChat client.
-    Prompts the user for server IP and desired username, then connects to the chat server.
-    Handles sending and receiving messages until the user quits or the connection is lost.
+    Main entry point for the PyChat client.
+    Prompts the user for server IP and desired username, connects, selects a room, and joins the chat.
+    Handles sending/receiving messages until the user quits or connection is lost.
     """
 
     print("Welcome to PyChat Client!")
@@ -51,7 +51,7 @@ def main():
     server_ip = input("Enter the server IP address: ").strip() or "127.0.0.1"
     desired_username = input("Enter your desired username: ").strip() or "User"
 
-    # Server port must match the server configuration
+    # Server port must match the server configuration in server.py
     server_port = 42069
 
     # Attempt to connect to the server
@@ -82,10 +82,52 @@ def main():
 
     assigned_username = assigned_line.replace("Your username is:", "").strip()
 
-    # Display welcome information
+    # Receive and display the list of available rooms
+    try:
+        room_list_data = conn.recv(1024).decode()
+    except Exception as e:
+        logging.error(f"Failed to receive room list from server: {e}")
+        sys.exit(1)
+
+    # Print the available rooms and the prompt
+    # The server should have sent something like:
+    # "Available rooms:\n- Linux\n- Apple\n- Tech\n- News\nEnter the name of the room you want to join:\n"
+    sys.stdout.write(room_list_data)
+    sys.stdout.flush()
+
+    # Prompt the user to choose a room
+    chosen_room = input("").strip()
+
+    # Send the chosen room to the server
+    try:
+        conn.sendall((chosen_room + "\n").encode())
+    except Exception as e:
+        logging.error(f"Failed to send chosen room to server: {e}")
+        sys.exit(1)
+
+    # The server may respond with an invalid room message
+    # If the room is invalid, the server sends "Invalid room chosen..." line.
+    # Let's do a non-blocking check:
+    conn.settimeout(0.5)
+    invalid_msg = ""
+    try:
+        invalid_msg = conn.recv(1024).decode().strip()
+    except Exception:
+        # If no data received, it's fine; move on.
+        pass
+    finally:
+        conn.settimeout(None)
+
+    if invalid_msg.startswith("Invalid room chosen"):
+        # Print the server's invalid choice message
+        print(invalid_msg)
+
+    # Now we have joined a room (either the chosen one or the fallback "Tech")
+
+    # Print instructions after joining the room
     print("\n" + "=" * 50)
     print(f"Welcome, {assigned_username}!")
-    print("You are now connected to the chat.")
+    print("You are now connected to the chat room.")
     print("Type your message and press Enter to send.")
     print("Type /quit to leave the chat.")
     print("=" * 50 + "\n")

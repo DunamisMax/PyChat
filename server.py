@@ -16,13 +16,18 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+# Available chat rooms (hard-coded)
+rooms = {"Linux": {}, "Apple": {}, "Tech": {}, "News": {}}
+
 # Global in-memory state
-clients: Dict[str, socket.socket] = {}
+# We still keep track of all usernames, but now users belong to specific rooms.
 usernames = set()
+user_rooms: Dict[str, str] = {}  # Maps username to the room they joined
 
 # Locks to ensure thread-safe operations on shared data
 clients_lock = threading.Lock()
 usernames_lock = threading.Lock()
+rooms_lock = threading.Lock()
 
 
 class Message(BaseModel):
@@ -54,13 +59,19 @@ def assign_username(requested_username: str) -> str:
 
 def broadcast(msg: Message, exclude: Optional[str] = None) -> None:
     """
-    Broadcast a message to all connected clients except 'exclude'.
+    Broadcast a message to all connected clients in the same room as msg.sender,
+    except 'exclude' (usually the sender).
     If a client fails to receive, that client is disconnected.
     """
+    sender_room = user_rooms.get(msg.sender)
+    if not sender_room:
+        return
+
     msg_str = f"[{msg.sender}]: {msg.content}\n"
     to_disconnect = []
-    with clients_lock:
-        for user, conn in clients.items():
+    with rooms_lock:
+        room_clients = rooms.get(sender_room, {})
+        for user, conn in room_clients.items():
             if user != exclude:
                 try:
                     conn.sendall(msg_str.encode())
@@ -78,13 +89,22 @@ def broadcast(msg: Message, exclude: Optional[str] = None) -> None:
 def disconnect_user(username: str) -> None:
     """
     Disconnect a user from the chat:
-    - Removes them from the clients and usernames sets.
+    - Removes them from their room and from usernames.
     - Closes their socket connection.
-    - Broadcasts a leave message to others.
+    - Broadcasts a leave message to others in the same room.
     """
+    # Find which room the user is in
+    user_room = user_rooms.pop(username, None)
+
     conn = None
-    with clients_lock:
-        conn = clients.pop(username, None)
+    if user_room:
+        with rooms_lock:
+            room_clients = rooms.get(user_room, {})
+            conn = room_clients.pop(username, None)
+    else:
+        # If for some reason user_room wasn't recorded, just ignore.
+        pass
+
     with usernames_lock:
         usernames.discard(username)
 
@@ -94,7 +114,9 @@ def disconnect_user(username: str) -> None:
         except Exception:
             logging.debug(f"Error closing connection for {username}, ignoring.")
 
-    broadcast(Message(sender="SERVER", content=f"{username} has left the chat."))
+    # Only broadcast leave message if user had a room
+    if user_room:
+        broadcast(Message(sender="SERVER", content=f"{username} has left the chat."))
 
 
 def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
@@ -102,9 +124,10 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
     Handle an individual client connection:
     1. Receive the desired username from the client.
     2. Assign a unique username and notify the client.
-    3. Add the client to the global clients list.
-    4. Broadcast a join message.
-    5. Loop: Read messages from this client and broadcast them.
+    3. Present the list of rooms and get the user's choice.
+    4. Add the client to the chosen room.
+    5. Broadcast a join message to that room.
+    6. Loop: Read messages from this client and broadcast them to their room.
     """
     username = "Unknown"
     try:
@@ -121,19 +144,40 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
         # Step 2: Notify client of assigned username
         conn.sendall(f"Your username is: {username}\n".encode())
 
-        # Step 3: Add client to global dictionary
-        with clients_lock:
-            clients[username] = conn
+        # Send the list of available rooms
+        room_list = "Available rooms:\n"
+        for r in rooms.keys():
+            room_list += f"- {r}\n"
+        room_list += "Enter the name of the room you want to join:\n"
+        conn.sendall(room_list.encode())
 
-        # Step 4: Broadcast join message
+        # Receive the chosen room
+        chosen_room_data = conn.recv(1024)
+        if not chosen_room_data:
+            logging.info(f"{username} did not choose a room and disconnected.")
+            conn.close()
+            return
+
+        chosen_room = chosen_room_data.decode().strip()
+        if chosen_room not in rooms:
+            # If invalid room, default to "Tech" for this session
+            chosen_room = "Tech"
+            conn.sendall(b"Invalid room chosen, defaulting to 'Tech'.\n")
+
+        # Step 4: Add the client to the chosen room
+        with rooms_lock:
+            rooms[chosen_room][username] = conn
+        user_rooms[username] = chosen_room
+
+        # Step 5: Broadcast join message
         broadcast(
-            Message(sender="SERVER", content=f"{username} has joined the chat."),
+            Message(sender="SERVER", content=f"{username} has joined {chosen_room}."),
             exclude=username,
         )
 
-        logging.info(f"{username} connected from {addr}")
+        logging.info(f"{username} connected from {addr} and joined room: {chosen_room}")
 
-        # Step 5: Message loop
+        # Step 6: Message loop
         while True:
             data = conn.recv(1024)
             if not data:
