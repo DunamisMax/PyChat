@@ -255,4 +255,4 @@ if __name__ == "__main__":
 
     # Start the FastAPI application with Uvicorn.
     # The TCP server is already started by the lifespan function.
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run("server:app", host="0.0.0.0", port=7420, log_level="info")
