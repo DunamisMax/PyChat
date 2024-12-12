@@ -23,7 +23,7 @@ async def receive_messages(
     try:
         async for message in ws:
             # Print the received message on a new line, then show prompt
-            sys.stdout.write(f"\n{message}\nYou> ")
+            sys.stdout.write(f"\n{message}\n")
             sys.stdout.flush()
     except websockets.ConnectionClosed:
         logging.info("Connection closed by the server.")
