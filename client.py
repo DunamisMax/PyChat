@@ -109,7 +109,7 @@ async def main():
             receiver_task = asyncio.create_task(receive_messages(ws, stop_event))
 
             # Prompt the user
-            sys.stdout.write("You> ")
+            sys.stdout.write("> ")
             sys.stdout.flush()
 
             # Main send loop
@@ -146,7 +146,7 @@ async def main():
 
                 # Reprint prompt after sending
                 if not stop_event.is_set():
-                    sys.stdout.write("You> ")
+                    sys.stdout.write("> ")
                     sys.stdout.flush()
 
             stop_event.set()
