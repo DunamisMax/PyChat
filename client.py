@@ -1,8 +1,9 @@
-import socket
-import threading
+import asyncio
 import sys
 import logging
 from typing import Optional
+
+import websockets
 
 # Configure logging
 logging.basicConfig(
@@ -12,184 +13,149 @@ logging.basicConfig(
 )
 
 
-def receive_messages(conn: socket.socket, stop_event: threading.Event) -> None:
+async def receive_messages(
+    ws: websockets.WebSocketClientProtocol, stop_event: asyncio.Event
+) -> None:
     """
     Continuously receives and displays messages from the server.
-    If the connection is lost or closed, notify the user and set stop_event.
+    If the connection is closed or an error occurs, set stop_event.
     """
-    while not stop_event.is_set():
-        try:
-            data = conn.recv(1024)
-            if not data:
-                # Connection closed by server
-                logging.info("Connection closed by the server.")
-                stop_event.set()
-                break
-
-            message = data.decode().rstrip("\n")
-            # Print the received message on a new line, then reprint prompt
+    try:
+        async for message in ws:
+            # Print the received message on a new line, then show prompt
             sys.stdout.write(f"\n{message}\nYou> ")
             sys.stdout.flush()
+    except websockets.ConnectionClosed:
+        logging.info("Connection closed by the server.")
+    except Exception as e:
+        logging.warning(f"Connection error: {e}")
+    finally:
+        stop_event.set()
 
-        except Exception as e:
-            logging.warning(f"Connection lost. Error: {e}")
-            stop_event.set()
-            break
 
-
-def main():
+async def main():
     """
-    Main entry point for the PyChat client.
-    Prompts the user for server IP and desired username, connects, selects a room, and joins the chat.
-    Handles sending/receiving messages until the user quits or connection is lost.
+    Main entry point for the PyChat WebSocket Client.
+    Prompts user for server URL and username, connects to the WebSocket endpoint,
+    and exchanges messages.
     """
 
-    print("Welcome to PyChat Client!")
-    print("You will be prompted for the server IP and a desired username.\n")
+    print("Welcome to PyChat WebSocket Client!")
+    print(
+        "You will be prompted for the server WebSocket URL (e.g. wss://dunamismax.com/chat) and a desired username.\n"
+    )
 
-    # Prompt for server details
-    server_ip = input("Enter the server IP address: ").strip() or "127.0.0.1"
+    server_url = (
+        input("Enter the server WebSocket URL [wss://dunamismax.com/chat]: ").strip()
+        or "wss://dunamismax.com/chat"
+    )
     desired_username = input("Enter your desired username: ").strip() or "User"
 
-    # Server port must match the server configuration in server.py
-    server_port = 42069
-
-    # Attempt to connect to the server
-    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Connect to the WebSocket server
     try:
-        conn.connect((server_ip, server_port))
-    except Exception as e:
-        logging.error(f"Failed to connect to {server_ip}:{server_port}. Error: {e}")
-        sys.exit(1)
+        async with websockets.connect(server_url) as ws:
+            # The server first asks for the username
+            # Receive the server's initial prompt
+            prompt = await ws.recv()
+            print(prompt)  # "Enter your desired username:"
 
-    # Send the desired username to the server
-    try:
-        conn.sendall(f"{desired_username}\n".encode())
-    except Exception as e:
-        logging.error(f"Failed to send username to server: {e}")
-        sys.exit(1)
+            # Send the desired username
+            await ws.send(desired_username)
 
-    # Receive the assigned username from the server
-    try:
-        assigned_line = conn.recv(1024).decode().strip()
-    except Exception as e:
-        logging.error(f"Failed to receive assigned username from server: {e}")
-        sys.exit(1)
+            # Assigned username
+            assigned_line = await ws.recv()
+            if not assigned_line.startswith("Your username is:"):
+                logging.error(
+                    "Unexpected response from server when assigning username."
+                )
+                return
+            assigned_username = assigned_line.replace("Your username is:", "").strip()
 
-    if not assigned_line.startswith("Your username is:"):
-        logging.error("Unexpected response from server when assigning username.")
-        sys.exit(1)
+            # Receive the room list prompt
+            room_list_data = await ws.recv()
+            sys.stdout.write(room_list_data + "\n")
+            sys.stdout.flush()
 
-    assigned_username = assigned_line.replace("Your username is:", "").strip()
+            # Prompt user to choose a room by number
+            chosen_room_num = input("").strip()
+            await ws.send(chosen_room_num)
 
-    # After receiving the assigned username, the client receives the room list:
-    try:
-        room_list_data = conn.recv(1024).decode()
-    except Exception as e:
-        logging.error(f"Failed to receive room list from server: {e}")
-        sys.exit(1)
-
-    # Print the available rooms and the prompt
-    # The server sends a numbered list of rooms and asks the user to enter a number
-    sys.stdout.write(room_list_data)
-    sys.stdout.flush()
-
-    # Prompt user to choose a room by number
-    chosen_room_num = input("").strip()
-
-    # Send the chosen number back to the server
-    try:
-        conn.sendall((chosen_room_num + "\n").encode())
-    except Exception as e:
-        logging.error(f"Failed to send chosen room number to server: {e}")
-        # Do not exit here, just continue. The server might assign default room.
-
-    # The server may respond with an invalid room message
-    conn.settimeout(0.5)
-    invalid_msg = ""
-    try:
-        invalid_msg = conn.recv(1024).decode().strip()
-    except Exception:
-        # If no data received, it's fine; move on.
-        pass
-    finally:
-        conn.settimeout(None)
-
-    if invalid_msg.startswith("Invalid choice"):
-        # Print the server's invalid choice message
-        print(invalid_msg)
-
-    # Now we have joined a room (either the chosen one or the fallback "General")
-
-    # Print instructions after joining the room
-    print("\n" + "=" * 50)
-    print(f"Welcome, {assigned_username}!")
-    print("You are now connected to the chat room.")
-    print("Type your message and press Enter to send.")
-    print("Type /quit to leave the chat.")
-    print("=" * 50 + "\n")
-
-    # Event to signal when we should stop reading/writing
-    stop_event = threading.Event()
-
-    # Start the message receiver thread
-    receiver = threading.Thread(
-        target=receive_messages, args=(conn, stop_event), daemon=True
-    )
-    receiver.start()
-
-    # Initial prompt
-    sys.stdout.write("You> ")
-    sys.stdout.flush()
-
-    # Main send loop
-    while not stop_event.is_set():
-        try:
-            # Using sys.stdin.readline() to handle Ctrl+D gracefully
-            msg = sys.stdin.readline()
-            if msg == "":
-                # EOF encountered (e.g., user pressed Ctrl+D)
-                msg = "/quit"
-        except KeyboardInterrupt:
-            # If user hits Ctrl+C, treat it as /quit
-            msg = "/quit"
-        except Exception as e:
-            logging.warning(f"Error reading input: {e}")
-            msg = "/quit"
-
-        msg = msg.strip()
-        if stop_event.is_set():
-            break
-
-        if msg.lower() == "/quit":
-            # Inform the server we are quitting
+            # The server may respond with invalid choice message or proceed
+            # This message may or may not come, so we do a quick check
             try:
-                conn.sendall(msg.encode())
-            except Exception:
+                # We use asyncio.wait_for in case there's no extra message
+                invalid_msg = await asyncio.wait_for(ws.recv(), timeout=0.5)
+                if invalid_msg.startswith("Invalid choice"):
+                    print(invalid_msg)
+                else:
+                    # Not an invalid message, it's probably the next prompt
+                    # Put it back into flow by printing it
+                    print(invalid_msg)
+            except asyncio.TimeoutError:
+                # No invalid message was sent, continue
                 pass
-            break
 
-        # Send message to the server
-        try:
-            conn.sendall((msg + "\n").encode())
-        except Exception as e:
-            logging.warning(f"Failed to send message to server: {e}")
+            # Instructions after joining the room
+            print("\n" + "=" * 50)
+            print(f"Welcome, {assigned_username}!")
+            print("You are now connected to the chat room.")
+            print("Type your message and press Enter to send.")
+            print("Type /quit to leave the chat.")
+            print("=" * 50 + "\n")
+
+            stop_event = asyncio.Event()
+
+            # Start the receiver task
+            receiver_task = asyncio.create_task(receive_messages(ws, stop_event))
+
+            # Prompt the user
+            sys.stdout.write("You> ")
+            sys.stdout.flush()
+
+            # Main send loop
+            loop = asyncio.get_event_loop()
+            while not stop_event.is_set():
+                # Reading user input asynchronously
+                # We'll run input reading in a thread to not block the event loop
+                try:
+                    msg = await loop.run_in_executor(None, sys.stdin.readline)
+                except (KeyboardInterrupt, EOFError):
+                    # Treat as /quit
+                    msg = "/quit\n"
+                msg = msg.strip()
+
+                if stop_event.is_set():
+                    break
+
+                if msg.lower() == "/quit":
+                    # Inform the server we are quitting
+                    try:
+                        await ws.send(msg)
+                    except Exception:
+                        pass
+                    break
+
+                # Send the message to the server
+                if msg:
+                    try:
+                        await ws.send(msg)
+                    except Exception as e:
+                        logging.warning(f"Failed to send message to server: {e}")
+                        stop_event.set()
+                        break
+
+                # Reprint prompt after sending
+                if not stop_event.is_set():
+                    sys.stdout.write("You> ")
+                    sys.stdout.flush()
+
             stop_event.set()
-            break
+            receiver_task.cancel()
+            print("\n[SYSTEM] Disconnected. Bye!")
 
-        # Reprint prompt after sending
-        sys.stdout.write("You> ")
-        sys.stdout.flush()
-
-    # Cleanup
-    stop_event.set()
-    try:
-        conn.close()
-    except Exception:
-        pass
-    print("\n[SYSTEM] Disconnected. Bye!")
-    sys.exit(0)
+    except Exception as e:
+        logging.error(f"Failed to connect or error during communication: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
