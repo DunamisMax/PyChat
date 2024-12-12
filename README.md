@@ -15,7 +15,7 @@ PyChat is a simple, terminal-based chat application built with Python and FastAP
 1. **Clone the Repository:**
 
    ```bash
-   git clone https://github.com/yourusername/PyChat.git
+   git clone https://github.com/dunamismax/PyChat.git
    cd PyChat
 
 Install Dependencies:
@@ -24,12 +24,12 @@ pip install -r requirements.txt
 Run the Server:
 
 uvicorn server:app --host 0.0.0.0 --port 8000
-Your chat server will be available at wss://yourdomain.com/chat (when properly reverse-proxied with Nginx and TLS).
+Your chat server will be available at wss://dunamismax.com/chat (when properly reverse-proxied with Nginx and TLS).
 
 Run the Client: Use the WebSocket-based client.py:
 
 python client.py
-When prompted, enter your WebSocket URL (e.g., wss://yourdomain.com/chat) and choose a username and room.
+When prompted, enter your WebSocket URL (e.g., wss://dunamismax.com/chat) and choose a username and room. (Just hit enter when prompted for the URL to use the default server hosted by me)
 
 Contributing
 Feel free to open issues, submit pull requests, or request features. Contributions are always welcome and appreciated.
